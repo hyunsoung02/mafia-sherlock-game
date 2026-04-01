@@ -1,0 +1,358 @@
+%%html
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>🕵️‍♂️ 셜록의 기록: 7일간의 진실</title>
+    <style>
+        body { background-color: #0b0b0d; color: #d4d4d8; font-family: 'Malgun Gothic', sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        #game-container { width: 1100px; background: #16161a; padding: 25px; border-radius: 12px; border: 1px solid #333; display: flex; gap: 20px; box-shadow: 0 0 25px rgba(0,0,0,0.8); }
+        
+        #stack-area { flex: 0.8; background: #1a1111; padding: 15px; border-radius: 8px; border: 1px solid #ef4444; display: flex; flex-direction: column; }
+        #main-game { flex: 2; display: flex; flex-direction: column; justify-content: space-between; }
+        #queue-area { flex: 0.8; background: #111a1a; padding: 15px; border-radius: 8px; border: 1px solid #00e5ff; display: flex; flex-direction: column; }
+        
+        .status-bar { font-size: 1.1em; color: #e4e4e7; border-bottom: 1px solid #27272a; padding-bottom: 10px; margin-bottom: 15px; display: flex; justify-content: space-between; }
+        
+        #interrogation-room { background: #09090b; padding: 20px; border-radius: 6px; border: 1px solid #3f3f46; min-height: 140px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-style: italic; color: #f4f4f5; text-align: center; line-height: 1.6; }
+        
+        .action-buttons { display: flex; gap: 10px; margin-top: 15px; }
+        button { flex: 1; padding: 12px; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; font-size: 0.9em; transition: 0.2s; }
+        button:disabled { background: #27272a !important; color: #52525b !important; cursor: not-allowed; }
+        
+        .btn-pop-q { background: #00b4d8; color: white; }
+        .btn-pop-q:hover:not(:disabled) { background: #0077b6; }
+        .btn-pop-s { background: #ef4444; color: white; }
+        .btn-pop-s:hover:not(:disabled) { background: #b91c1c; }
+        
+        /* 밤 투표 팝업 영역 */
+        #vote-modal { display: none; background: #1f1f2e; padding: 15px; border-radius: 8px; border: 2px solid #ef4444; margin-top: 15px; text-align: center; }
+        select { padding: 10px; width: 60%; background: #09090b; color: white; border: 1px solid #3f3f46; border-radius: 5px; font-size: 1em; }
+        .btn-vote { background: #b91c1c; color: white; padding: 10px 20px; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; margin-left: 10px; }
+        
+        .box-item { padding: 10px; margin: 5px 0; border-radius: 4px; text-align: center; font-size: 0.85em; font-weight: bold; }
+        .queue-item { background: #00e5ff; color: #000; }
+        .stack-item { background: #ff4d4d; color: #fff; }
+        
+        #log { margin-top: 15px; font-size: 0.9em; text-align: center; color: #a1a1aa; min-height: 40px; }
+        .night-mode { background: #0a0a14 !important; color: #ef4444 !important; border-color: #ef4444 !important; }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    
+    <div id="stack-area">
+        <h3 style="text-align: center; margin-top: 0; color: #ef4444;">📚 추리 노트 (Stack)</h3>
+        <div id="stack-list" style="display: flex; flex-direction: column-reverse; flex-grow: 1; justify-content: flex-start; border: 2px dashed #444; padding: 5px;"></div>
+        <button class="btn-pop-s" id="stack-btn" onclick="popFromStack()">스택에서 복원 [pop]</button>
+    </div>
+
+    <div id="main-game">
+        <div>
+            <div class="status-bar">
+                <span id="day-display" style="font-weight: bold; color: #ffeb3b;">📆 Day 1 (낮)</span>
+                <span style="color:#00e5ff;">📢 오늘 남은 발언자: <span id="action-display">1</span>명</span>
+                <span style="color:#ef4444;">❤️ 목숨: <span id="life-display">3</span></span>
+            </div>
+            
+            <div id="interrogation-room">
+                <div id="speaker-name" style="font-weight: bold; color: #f59e0b; margin-bottom: 10px;"></div>
+                <div id="dialogue-text">"오른쪽 큐에서 용의자를 꺼내 심문을 시작하십시오."</div>
+            </div>
+        </div>
+
+        <div>
+            <div class="action-buttons" id="day-buttons">
+                <button class="btn-pop-q" id="queue-btn" onclick="popFromQueue()">📥 큐에서 발언자 꺼내기 [shift]</button>
+            </div>
+
+            <div id="vote-modal">
+                <p style="color: #ef4444; font-weight: bold; margin-top: 0;">🌙 모든 인물의 발언 종료! 마피아(진범)를 지목하십시오.</p>
+                <select id="vote-select"></select>
+                <button class="btn-vote" onclick="submitVote()">투표 확정</button>
+            </div>
+
+            <div id="log">게임이 시작되었습니다. 낮에는 모든 인물의 발언을 듣고 밤에 투표하세요.</div>
+        </div>
+    </div>
+
+    <div id="queue-area">
+        <h3 style="text-align: center; margin-top: 0; color: #00e5ff;">📥 소환 대기열 (Queue)</h3>
+        <div id="queue-list" style="flex-grow: 1; border: 2px dashed #444; padding: 5px;"></div>
+        <p style="font-size: 0.75em; color: #71717a; text-align: center;">매일 아침 생존자들이 여기에 줄을 섭니다.</p>
+    </div>
+</div>
+
+<script>
+    // 7명 전원의 7일간 매일 다른 대사 데이터 (총 49개)
+    const dailySuspectData = {
+        "저택 주인": [
+            "새벽에 물을 마시러 거실로 나갔네. 그때 아들과 며느리가 속닥거리는 소리를 들었지.",
+            "회사를 물려받을 녀석들이 저렇게 가벼워서야 쯧쯧... 내 재산만 노리는 게 뻔해.",
+            "집사는 항상 내 곁을 든든하게 지켜주는 유일한 사람이야.",
+            "서재의 금고 비밀번호는 오직 나와 집사만 알고 있네. 그런데 돈이 털렸어.",
+            "내 두 번째 부인은 사치가 심했지. 그래서 주변에 적이 많았을 게야.",
+            "아들놈이 요즘 사채업자들에게 쫓긴다는 소문을 들었네. 끔찍하군.",
+            "집사가 준 차를 마시면 잠이 솔솔 와. 어젯밤에도 아주 깊이 잠들었지."
+        ],
+        "아들": [
+            "새벽엔 아내와 방에 있었습니다! 두 번째 부인이 죽어서 아버지가 충격받으실까 봐 걱정했을 뿐입니다.",
+            "어머니(첫 번째 부인)는 평소에 방에서 나오시지도 않는데 왜 의심하는 겁니까!",
+            "솔직히 새어머니가 사라져서 유산 분배가 쉬워진 건 사실입니다. 하지만 난 안 죽였어요!",
+            "새벽에 거실을 지나갈 때, 정원사가 서재 문턱에서 서성이는 걸 똑똑히 봤습니다.",
+            "아버지는 집사만 믿으시는데, 그 영감 눈빛이 가끔 섬뜩할 때가 있습니다.",
+            "사업이 조금 힘들긴 하지만 사람을 죽일 정도로 막장으로 치닫진 않았습니다!",
+            "차라리 도둑놈의 짓이라고 생각하는 게 합리적이지 않습니까? 왜 가족을 의심해요?"
+        ],
+        "며느리": [
+            "남편과 계속 같이 있었어요. 다만 새벽에 정원사 양반이 흙투성이가 되어 서재 앞을 지나가는 걸 봤어요!",
+            "우린 그냥 돈이 필요할 뿐이지 사람을 해치진 않아요!",
+            "첫 번째 부인 마님께서 어젯밤에 몰래 흐느끼시는 소리를 들었어요. 무서웠죠.",
+            "집사 영감님은 가끔 회장님을 쳐다볼 때 마치 신을 모시는 신도처럼 굴어요. 소름 돋아요.",
+            "사건 당일 서재 근처에서 은은한 허브티 향이 났어요. 평소에 집사님이 타오던 차였죠.",
+            "남편은 사채 같은 거 안 써요! 저택 주인 어른이 오해하시는 겁니다.",
+            "정원사 양반이 건넸다는 그 쪽지, 조작된 거 아닐까요? 정원사는 글을 모른다고 들었는데..."
+        ],
+        "첫 번째 부인": [
+            "난 그 발칙한 두 번째 부인이 끔찍하게 싫어요! 하지만 새벽 내내 방에 있었습니다.",
+            "집사 65세 영감은 회장님께 과도하게 집착해요. 아주 기괴할 정도로요.",
+            "도둑이 들었다면 내 패물도 훔쳐 갔을 텐데, 내 방은 멀쩡하더군요. 타겟은 부인이었어요.",
+            "회장님은 눈이 머셨어요. 집사가 자기를 어떻게 가스라이팅 하고 있는지 전혀 모르시죠.",
+            "죽은 두 번째 부인은 집사가 회장님의 재산을 빼돌리고 있다고 의심하고 있었어요.",
+            "정원사는 순박한 사람이에요. 죄 없는 사람을 흙이 묻었다는 이유로 몰아세우지 마세요.",
+            "모든 비극은 집사가 타오는 그 '수면 유도차'에서 시작된 겁니다. 다들 바보같이 속고 있어요."
+        ],
+        "정원사": [
+            "... (흙 묻은 쪽지를 건넨다. '집사는 새벽에 찻잔을 들고 두 번째 부인의 방으로 갔다.')",
+            "... (묵묵히 서재 바닥에 떨어진 찻잔 파편을 가리킨다.)",
+            "... (아무 말 없이 집사를 뚫어지게 쳐다본다.)",
+            "... (정원에 파묻혀 있던 독초의 줄기를 셜록에게 내민다.)",
+            "... (자신의 흙 묻은 장화가 아니라, 집사의 깨끗한 구두를 손가락으로 가리킨다.)",
+            "... (첫 번째 부인 마님의 방 쪽을 보며 조용히 고개를 젓는다.)",
+            "... (마지막으로 찻잔에 남은 찌꺼기를 보여주며 '독'이라고 입모양으로 말한다.)"
+        ],
+        "도둑": [
+            "아이고 나리, 전 부엌에 먹을 거나 좀 훔치러 들어왔습죠!",
+            "진짜라니까요! 집사가 두 번째 부인의 찻잔에 뭔가를 타는 걸 똑똑히 봤당께요!",
+            "정원사 형씨랑 눈이 마주쳤는데 모른 척 해주더라고요. 착한 사람 같습디다.",
+            "집사가 서재에서 나올 때 주머니가 묵직하더라고요. 금고를 턴 게 분명해요!",
+            "제가 도둑질은 해도 사람 목숨은 안 건드립니다! 억울해요!",
+            "그날 밤 저택의 모든 전등이 1분간 꺼졌었어요. 누군가 두꺼비집을 건드린 겁니다.",
+            "집사 영감이 절 보더니 조용히 웃더군요. 마치 계획대로 되었다는 듯이요. 소름 돋았습니다."
+        ],
+        "집사": [
+            "전 회장님을 각별히 모시는 사람입니다. 어젯밤에도 회장님을 보필한 뒤 방으로 갔습니다.",
+            "사실... 제가 말하지 않으려 했는데 정원사 그 친구가 수상합니다. 밤마다 서재를 뒤지더군요.",
+            "도둑놈의 말을 믿으시는 겁니까? 그자가 훔친 물건을 들키자 절 모함하려고 거짓말을 지어낸 게 뻔합니다!",
+            "회장님을 위해 전 평생을 바쳤습니다. 제가 어찌 그런 끔찍한 짓을 하겠습니까?",
+            "첫 번째 부인 마님께서 극심한 질투심에 눈이 멀어 두 번째 부인을 해친 게 아닐까 두렵습니다.",
+            "아들 도련님의 빚 독촉장들이 서재 쓰레기통에서 발견되었습니다. 정황이 너무 뻔하지 않습니까?",
+            "셜록 님, 부디 이 어리석은 자들의 거짓말에 휘둘리지 마시고 지혜로운 판결을 내려주십시오."
+        ]
+    };
+
+    // 7일 동안 등장하는 인물 목록
+    const allSuspects = ["저택 주인", "아들", "며느리", "첫 번째 부인", "정원사", "도둑", "집사"];
+
+    let queue = []; 
+    let stack = [];            
+    
+    let currentSuspect = null;
+    let lives = 3;
+    let day = 1;
+    let isNight = false;
+
+    // 아침이 되면 그날 발언할 사람들을 큐에 채워넣음
+    function setMorning() {
+        queue = [...allSuspects]; // 7명 전원 큐에 추가
+        isNight = false;
+        document.getElementById("interrogation-room").classList.remove("night-mode");
+        document.getElementById("speaker-name").innerText = "";
+        document.getElementById("dialogue-text").innerText = `Day ${day}의 아침이 밝았습니다. 7명의 발언을 모두 들어야 합니다.`;
+        document.getElementById("log").innerText = `☀️ Day ${day}가 시작되었습니다. 큐에서 차례대로 꺼내 심문하세요.`;
+        render();
+    }
+
+    function render() {
+        document.getElementById("life-display").innerText = lives;
+        document.getElementById("day-display").innerText = `Day ${day} (${isNight ? '밤' : '낮'})`;
+        document.getElementById("action-display").innerText = queue.length;
+
+        // 큐 렌더링
+        const queueDiv = document.getElementById("queue-list");
+        queueDiv.innerHTML = "";
+        queue.forEach((name) => {
+            queueDiv.innerHTML += `<div class="box-item queue-item">${name}</div>`;
+        });
+
+        // 스택 렌더링
+        const stackDiv = document.getElementById("stack-list");
+        stackDiv.innerHTML = "";
+        stack.forEach((name) => {
+            stackDiv.innerHTML += `<div class="box-item stack-item">${name}</div>`;
+        });
+
+        // 버튼 및 모달 상태 통제
+        document.getElementById("queue-btn").disabled = isNight || queue.length === 0;
+        document.getElementById("stack-btn").disabled = stack.length === 0;
+        
+        const voteModal = document.getElementById("vote-modal");
+        const dayButtons = document.getElementById("day-buttons");
+        
+        if (isNight) {
+            voteModal.style.display = "block";
+            dayButtons.style.display = "none";
+            updateVoteOptions(); 
+        } else {
+            voteModal.style.display = "none";
+            dayButtons.style.display = "flex";
+        }
+    }
+
+    // 📥 큐에서 꺼내기 (FIFO)
+    function popFromQueue() {
+        if (isNight || queue.length === 0) return;
+
+        // 이전 발언자가 있었다면 스택으로 이동
+        if (currentSuspect) {
+            stack.push(currentSuspect); 
+        }
+
+        currentSuspect = queue.shift(); 
+
+        document.getElementById("log").innerHTML = `📥 큐에서 <strong>[${currentSuspect}]</strong>을 꺼내 심문합니다.`;
+        
+        displayDialogue();
+
+        // 7명 전원의 발언이 끝나면 밤으로 전환
+        if (queue.length === 0) {
+            setTimeout(setNight, 1500);
+        }
+        
+        render();
+    }
+
+    // 💬 대사 출력 (현재 날짜 인덱스에 맞는 대사 매칭)
+    function displayDialogue() {
+        // 배열 인덱스는 0부터 시작하므로 day-1 적용
+        const dialogue = dailySuspectData[currentSuspect][day - 1];
+        document.getElementById("speaker-name").innerText = `【 ${currentSuspect} 】`;
+        document.getElementById("dialogue-text").innerText = `"${dialogue}"`;
+    }
+
+    // 🌙 밤이 됨
+    function setNight() {
+        isNight = true;
+        
+        // 마지막 인물도 스택으로 이동
+        if (currentSuspect) {
+            stack.push(currentSuspect);
+            currentSuspect = null;
+        }
+
+        document.getElementById("interrogation-room").classList.add("night-mode");
+        document.getElementById("speaker-name").innerText = "📢 밤이 되었습니다. (수사 종료)";
+        document.getElementById("dialogue-text").innerText = `Day ${day}의 전원 발언이 끝났습니다.\n투표 팝업창에서 범인을 지목하거나 보류하십시오.`;
+        document.getElementById("log").innerHTML = "🌙 밤이 되었습니다. 팝업창에서 마피아를 지목하세요.";
+        render();
+    }
+
+    // 🗳️ 투표 팝업 리스트 갱신 (보류 옵션 포함)
+    function updateVoteOptions() {
+        const select = document.getElementById("vote-select");
+        select.innerHTML = "";
+        
+        // 1. 보류 옵션
+        const skipOption = document.createElement("option");
+        skipOption.value = "skip";
+        skipOption.innerText = "👉 오늘 밤은 보류 (아무도 지목하지 않음)";
+        select.appendChild(skipOption);
+        
+        // 2. 모든 등장인물 리스트 추가
+        allSuspects.forEach(name => {
+            const option = document.createElement("option");
+            option.value = name;
+            option.innerText = `👤 범인 지목: ${name}`;
+            select.appendChild(option);
+        });
+    }
+
+    // 🚨 투표 제출
+    function submitVote() {
+        const select = document.getElementById("vote-select");
+        const selectedValue = select.value;
+
+        // 보류 처리
+        if (selectedValue === "skip") {
+            alert("조심스러운 선택이군요. 오늘 밤은 아무도 처형하지 않고 다음 날로 넘어갑니다.");
+            goToNextDay();
+            return;
+        }
+
+        // 실제 투표 처리 (집사 65세 영감이 진범)
+        if (selectedValue === "집사") {
+            alert(`🎉 완전한 승리!\n진범은 [집사]였습니다!\n매일 바뀌는 7명의 알리바이를 분석해 집사를 검거하셨군요!\n남은 목숨: ${lives}개`);
+            resetGame();
+        } else {
+            lives--;
+            
+            if (selectedValue === "정원사" || selectedValue === "도둑") {
+                alert(`❌ 오판!\n진범(집사)의 교묘한 언플과 모함에 속아 넘어가셨습니다!\n무고한 [${selectedValue}]가 처형당했습니다.`);
+            } else {
+                alert(`❌ 오판!\n[${selectedValue}]는 진범이 아닙니다! 무고한 희생자가 발생했습니다.`);
+            }
+            
+            if (lives <= 0) {
+                setTimeout(() => {
+                    alert(`💀 게임 오버\n무고한 피가 너무 많이 흘렀습니다.\n진범 [집사]가 저택을 완전히 장악했습니다.`);
+                    resetGame();
+                }, 100);
+            } else {
+                goToNextDay(); 
+            }
+        }
+    }
+
+    // 📚 스택에서 꺼내기 (LIFO)
+    function popFromStack() {
+        if (stack.length === 0) return;
+
+        const stackOut = stack.pop(); 
+        document.getElementById("log").innerHTML = `📚 스택(노트)에서 가장 최근에 심문한 <strong>[${stackOut}]</strong>을 다시 불러옵니다.`;
+
+        currentSuspect = stackOut;
+        displayDialogue();
+        
+        render();
+    }
+
+    // ☀️ 다음 날로 넘어가기
+    function goToNextDay() {
+        if (day >= 7) {
+            alert(`💀 타임오버!\n7일간의 수사 기간이 모두 종료되었습니다.\n미제 사건이 되었습니다.`);
+            resetGame();
+            return;
+        }
+
+        day++;
+        stack = []; // 다음 날이 되면 스택(오늘의 추리노트) 비우기
+        currentSuspect = null;
+        setMorning();
+    }
+
+    // 게임 초기화
+    function resetGame() {
+        lives = 3;
+        day = 1;
+        stack = [];
+        currentSuspect = null;
+        setMorning();
+    }
+
+    // 첫 실행
+    setMorning();
+</script>
+
+</body>
+</html>
